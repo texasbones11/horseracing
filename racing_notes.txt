@@ -1,0 +1,71 @@
+Track conditions in USA:
+Dirt track:
+    fast: dry, even, resilient surface
+    wet fast - track has surface water on it, but base is still solid. times are similar to, or sometimes faster than, a fast track. occurs immediately after a heavy rain
+    good: a track that is almost fast
+    muddy: a track that is wet but has no standing water
+    sloppy: a track saturated with water; with standing water visible
+
+Turf:
+    firm: a firm, resilient surface
+    good: a turf course slightly softer than firm
+    soft: a turf course with a large amount of moisture. Horses sink very deeply into it
+
+
+#################
+#run the scraper to populate workouts DB
+cd ~/Documents/workouts/
+> response.json
+scrapy crawl practice -o response.json
+mongoimport -d thoroughbred -c workouts --type json --file ~/Documents/workouts/response.json --jsonArray
+mongoimport -d thoroughbred -c current --type json --file ~/Documents/workouts/response.json --jsonArray --mode=upsert
+
+cd ~/Documents/stats/
+> response.json
+scrapy crawl earnings -o response.json
+#edit the json to remove any brackets and replace with commas if there are multiple runs of the crawler
+mongoimport -d thoroughbred -c earnings --type json --file ~/Documents/stats/response.json --jsonArray
+
+
+
+#return field for a search in mongodb
+db.thoroughbred.find({"speed":"Wet Fast"}, {"time":1,"_id":0})
+db.thoroughbred.find({"speed":"Wet Fast"}, {"time":1,"_id":0,"name":1})
+
+
+#################
+sudo apt-get install python-pandas
+#ML
+
+
+
+
+##########
+#full database build out:
+> use thoroughbred
+> db.workouts.createIndex( { "name": 1, "date": 1, "distance": 1 }, { unique:true } )
+> db.earnings.createIndex( { "name": 1, "year": 1 }, { unique:true } )
+> db.current.createIndex( { "name": 1 }, { unique:true } )
+cd /home/wjones/Documents/stats
+mongoimport -d thoroughbred -c earnings --type json --file ~/Documents/stats/response.json --jsonArray
+cd ..
+cd workouts/
+mongoimport -d thoroughbred -c workouts --type json --file ~/Documents/workouts/response.json --jsonArray
+mongoimport -d thoroughbred -c current --type json --file ~/Documents/workouts/response.json --jsonArray --mode=upsert
+> db.current.update({}, {$unset: {speed:1, notes:1, date:1, time:1, type:1, track:1, distance:1}}, {multi: true})
+
+
+
+
+
+
+
+# ###################
+# ElasticNet
+from sklearn import ElasticNet
+
+alpha = 0.1
+enet = ElasticNet(alpha=alpha, l1_ratio=0.7)
+
+y_pred_enet = enet.fit(X_train, y_train).predict(X_test)
+r2_score_enet = r2_score(y_test, y_pred_enet)

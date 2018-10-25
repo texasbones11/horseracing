@@ -1,0 +1,16 @@
+#Install VDC from web
+https://atom.io
+apt-get install ~/Downloads/atom-amd64.deb
+
+Edit -> Preferences -> Install -> script, autocomplete-python, file-icons, minimap, python-autopep8, linter-flake8, platformio-ide-terminal
+
+apt-get install flake8 python-autopep8 python-pip
+ctrl-shift-b to run script
+ctrl-shift-p to run options
+
+#mongodb integration
+apt-get install python-pymongo
+
+#machine learning integration
+apt-get install python-sklearn
+apt-get install python-numpy

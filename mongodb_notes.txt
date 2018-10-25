@@ -1,0 +1,237 @@
+#install mongoDB:
+apt-get install mongodb
+systemctl start mongodb
+/var/lib/mongodb put on xfs filesystem
+
+#create database (not necessary if doing an import):
+mongo
+use race
+
+#drop database:
+use workout
+db.dropDatabase()
+
+#collections will be each race location
+#documents are each row which is an individual race result
+#issues with importing CSV check delimiters and string separators (fix going from excel to csv)
+#import CSV:
+mongoimport -d race -c belmont_stakes --type csv --file ~/Downloads/Belmont_stakes_winners.csv --headerline
+#import JSON:
+mongoimport -d workout -c thoroughbred --type json --file ~/Documents/workouts/response.json --jsonArray
+
+#access data:
+mongo
+db.belmont_stakes.find({"Winner":"Birdstone"}).pretty()
+db.belmont_stakes.find({"Year":{$lt:2000}}).pretty()
+db.belmont_stakes.find({$and:[{"Year":{$lt:2000}},{"Winner":"Summing"}]}).pretty()
+db.belmont_stakes.find({$or:[{"Year":{$lt:2000}},{"Winner":"Tonalist"}]}).pretty() 
+
+#display first 20 of one column with no ID column in alphabetical order
+db.belmont_stakes.find({},{"Winner":1,_id:0}).limit(20).sort({"Winner":1})
+
+#covered query - query on an index for a desired field (fast - indexes are already in RAM):
+db.belmont_stakes.find({"Year":1997},{"Dist":1,"_id":0})
+
+#aggregation is where you perform averages, max, min, and counts
+
+#backup:
+mongodump --out /opt/backup
+
+#restore:
+mongorestore /opt/backup
+
+#monitor:
+mongostat 5
+mongotop 5
+
+#create index:
+db.belmont_stakes.ensureIndex({"Year":1})
+
+#check query
+.getIndexes()
+.explain()
+
+#delete index(by index name):
+db.belmont_stakes.dropIndex("Comments_text")
+
+#you can do text search by creating a text index and doing $search on it
+db.belmont_stakes.ensureIndex({"Comments (source: Pedigree Query)":"text"})
+db.belmont_stakes.find({$text:{$search:"Fast"}})
+
+#alternatively without an index you can do regular expression:
+db.belmont_stakes.find({"Winner":/American/}).pretty()
+
+#compound uniq undexes (avoids importing duplicate documents) (might need to do surface too)
+db.workouts.createIndex( { "name": 1, "date": 1, "distance": 1 }, { unique:true } )
+db.earnings.createIndex( { "name": 1, "year": 1 }, { unique:true } )
+db.current.createIndex( { "name": 1 }, { unique:true } )
+
+#reverse search
+db.workouts.find({name:{$not: { $eq: ""}}}).pretty().count()
+
+#remove documents with matching values
+db.workouts.remove({name: ""})
+db.earnings.remove({name: ""})
+db.current.remove({name: ""})
+
+#empty all data in a collection
+db.thoroughbred.remove( { } )
+
+#aggregate earnings:
+db.earnings.aggregate([
+{
+$unwind: "$name"
+},
+{
+$lookup:
+{
+from: "thoroughbred",
+localField: "name",
+foreignField: "name",
+as: "workouts"
+}
+},
+{
+$match: { "workouts": { $ne: [] } }
+}
+])
+
+#count an aggregate: 
+db.earnings.aggregate([ { $unwind: "$name" }, { $lookup: { from: "thoroughbred", localField: "name", foreignField: "name", as: "workouts" } }, { $match: { "workouts": { $ne: [] } } } ]).toArray().length
+
+#remove a field from a document
+db.current.update({}, {$unset: {speed:1, notes:1, date:1, time:1, type:1, track:1, distance:1}}, {multi: true})
+
+#multiple lookups in an aggregate:
+db.current.aggregate([
+{
+$unwind: "$name"
+},
+{
+$lookup:
+{
+from: "earnings",
+localField: "name",
+foreignField: "name",
+as: "earnings"
+}
+},
+{
+$lookup:
+{
+from: "workouts",
+localField: "name",
+foreignField: "name",
+as: "workouts"
+}
+},
+{
+$match: { "current": { $ne: [] } }
+}
+]).pretty()
+
+#rename collection
+db.thoroughbred.renameCollection("workouts")
+
+
+},
+{
+$lookup:
+{
+from: "workouts",
+localField: "name",
+foreignField: "name",
+as: "workouts"
+}
+
+
+#merge object Aggregate (grabs first):
+db.earnings.aggregate([
+{
+$unwind: "$name"
+},
+{
+$lookup:
+{
+from: "workouts",
+localField: "name",
+foreignField: "name",
+as: "workouts"
+}
+},
+{
+$replaceRoot: { newRoot: { $mergeObjects: [ { $arrayElemAt: [ "$workouts", 0 ] }, "$$ROOT" ] } }
+},
+{ $project: { workouts: 0} }
+]).pretty()
+
+#aggregate each speed combine current info
+db.workouts.aggregate([
+{
+$unwind: "$name"
+},
+{
+$lookup:
+{
+from: "earnings",
+localField: "name",
+foreignField: "name",
+as: "earnings"
+}
+},
+{
+$lookup:
+{
+from: "current",
+localField: "name",
+foreignField: "name",
+as: "current"
+}
+},
+{
+$replaceRoot: { newRoot: { $mergeObjects: [ { $arrayElemAt: [ "$current", 0 ] }, "$$ROOT" ] } }
+},
+{ $project: { current: 0} },
+{
+$match: { "workouts": { $ne: [] } }
+}
+]).pretty()
+
+#aggregate each speed combine current and earnings
+db.workouts.aggregate([
+{
+$unwind: "$name"
+},
+{
+$lookup:
+{
+from: "earnings",
+localField: "name",
+foreignField: "name",
+as: "earnings"
+}
+},
+{
+$lookup:
+{
+from: "current",
+localField: "name",
+foreignField: "name",
+as: "current"
+}
+},
+{
+$replaceRoot: { newRoot: { $mergeObjects: [ { $arrayElemAt: [ "$current", 0 ] }, "$$ROOT" ] } }
+},
+{ $project: { current: 0} },
+{
+$replaceRoot: { newRoot: { $mergeObjects: [ { $arrayElemAt: [ "$earnings", 0 ] }, "$$ROOT" ] } }
+},
+{ $project: { earnings: 0} },
+{
+$match: { "workouts": { $ne: [] } }
+}
+]).pretty()
+
+#rename fields
+db.earnings.update({},{$rename:{'earnings': 'winnings', 'speed': 'speed_rating'}}, {multi: true})
